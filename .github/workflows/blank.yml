@@ -1,0 +1,74 @@
+name: PC Virtual Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      horas:
+        description: 'Tiempo máximo encendida (1 a 6 horas)'
+        required: true
+        default: '4'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+          - '6'
+
+jobs:
+  iniciar-pc:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Conectar a Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          hostname: pc-virtual-github
+
+      - name: Habilitar Escritorio Remoto (RDP) y Firewall
+        shell: powershell
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          Restart-Service -Name TermService -Force
+
+      - name: Crear Usuario Administrador
+        shell: powershell
+        env:
+          USER_NAME: ${{ secrets.RDP_USER }}
+          USER_PASS: ${{ secrets.RDP_PASSWORD }}
+        run: |
+          $Password = ConvertTo-SecureString $env:USER_PASS -AsPlainText -Force
+          New-LocalUser -Name $env:USER_NAME -Password $Password -FullName "Usuario Virtual" -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member $env:USER_NAME
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $env:USER_NAME
+
+      - name: Obtener IP y mantener PC encendida
+        shell: powershell
+        env:
+          USER_NAME: ${{ secrets.RDP_USER }}
+          DURACION: ${{ github.event.inputs.horas }}
+        run: |
+          Start-Sleep -Seconds 5
+          $tsCmd = Get-Command tailscale -ErrorAction SilentlyContinue
+          if (-not $tsCmd) { $tsCmd = "C:\Program Files\Tailscale\tailscale.exe" }
+          $tsIP = & $tsCmd ip -4
+
+          Write-Host "======================================================" -ForegroundColor Green
+          Write-Host "   TU PC VIRTUAL ESTA LISTA PARA CONECTARSE" -ForegroundColor Green
+          Write-Host "======================================================" -ForegroundColor Green
+          Write-Host "Direccion IP (Tailscale): $tsIP" -ForegroundColor Cyan
+          Write-Host "Usuario:                  $env:USER_NAME" -ForegroundColor Cyan
+          Write-Host "Contrasena:               (La de tu secreto RDP_PASSWORD)" -ForegroundColor Cyan
+          Write-Host "======================================================" -ForegroundColor Green
+
+          $horas = if ($env:DURACION) { [int]$env:DURACION } else { 4 }
+          $fin = (Get-Date).AddHours($horas)
+          while ((Get-Date) -lt $fin) {
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] PC activa. Cancela el workflow en GitHub para apagarla."
+            Start-Sleep -Seconds 60
+          }
