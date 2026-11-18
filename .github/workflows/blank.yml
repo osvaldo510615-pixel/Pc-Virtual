@@ -36,6 +36,14 @@ jobs:
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
 
+      - name: Optimizar rendimiento y navegador
+        shell: powershell
+        run: |
+          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          Get-Service -Name "MSSQL*","MySQL*","postgresql*","docker","SysMain","WSearch" -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
+          New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge" -Force | Out-Null
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge" -Name "HideFirstRunExperience" -Value 1 -Type DWord
+
       - name: Crear Usuario Administrador
         shell: powershell
         env:
@@ -47,11 +55,6 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member $env:USER_NAME
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $env:USER_NAME
 
-      - name: Liberar memoria RAM de servicios sin usar
-        shell: powershell
-        run: |
-          Get-Service -Name "MSSQL*","MySQL*","postgresql*","docker","SysMain","WSearch" -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
-
       - name: Instalar OBS Studio y VLC
         shell: powershell
         run: |
@@ -62,7 +65,7 @@ jobs:
         env:
           DURACION: ${{ github.event.inputs.horas }}
         run: |
-          Write-Host "PC virtual iniciada correctamente (datos ocultos por seguridad)." -ForegroundColor Green
+          Write-Host "PC virtual iniciada y optimizada correctamente." -ForegroundColor Green
           $horas = if ($env:DURACION) { [int]$env:DURACION } else { 4 }
           $fin = (Get-Date).AddHours($horas)
           while ((Get-Date) -lt $fin) {
