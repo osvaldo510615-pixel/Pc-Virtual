@@ -28,19 +28,24 @@ jobs:
           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
           hostname: pc-virtual-github
 
-      - name: Habilitar Escritorio Remoto (RDP) y Firewall
+      - name: Habilitar Escritorio Remoto (RDP TCP y UDP)
         shell: powershell
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          netsh advfirewall firewall add rule name="RDP-Tailscale-TCP" dir=in action=allow protocol=TCP localport=3389
+          netsh advfirewall firewall add rule name="RDP-Tailscale-UDP" dir=in action=allow protocol=UDP localport=3389
           Restart-Service -Name TermService -Force
 
-      - name: Optimizar rendimiento y navegador
+      - name: Optimizar fluidez, 60 FPS y navegador
         shell: powershell
         run: |
           powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           Get-Service -Name "MSSQL*","MySQL*","postgresql*","docker","SysMain","WSearch" -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations" -Name "DWMFRAMEINTERVAL" -Value 15 -Type DWord
+          New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" -Force | Out-Null
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" -Name "bEnumerateHWBeforeSW" -Value 0 -Type DWord
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "SinAnimaciones" -Value 'reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f' -Type String
           New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge" -Force | Out-Null
           Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge" -Name "HideFirstRunExperience" -Value 1 -Type DWord
 
@@ -65,7 +70,7 @@ jobs:
         env:
           DURACION: ${{ github.event.inputs.horas }}
         run: |
-          Write-Host "PC virtual iniciada y optimizada correctamente." -ForegroundColor Green
+          Write-Host "PC virtual iniciada y optimizada a 60 FPS." -ForegroundColor Green
           $horas = if ($env:DURACION) { [int]$env:DURACION } else { 4 }
           $fin = (Get-Date).AddHours($horas)
           while ((Get-Date) -lt $fin) {
